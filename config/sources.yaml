@@ -1,0 +1,142 @@
+# Source inventory — Module 3: Visa & Regulatory Change Monitor
+# Phase 1 deliverable. Every source here is loaded into the `sources` table.
+#
+# Fields
+#   key            unique short id (never change once data exists)
+#   name           human-readable name shown in Tableau
+#   agency         publishing body
+#   url            page to monitor
+#   category       visa_page | processing_times | news | policy | workplace
+#   visa_hint      visa subclasses this page usually concerns (helps the LLM)
+#   render         "static" (requests) or "js" (Playwright, for JS-rendered pages)
+#   selector       optional CSS selector for the main content block
+#   priority       1 = core (counts toward coverage KPI), 2 = secondary
+#
+# URLs checked 12 Oct 2026. Re-verify with `python scripts/check_sources.py` —
+# government sites restructure pages from time to time.
+
+sources:
+  # ---------- Department of Home Affairs: visa pages ----------
+  - key: ha_student_500
+    name: Student visa (subclass 500)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/student-500
+    category: visa_page
+    visa_hint: ["500"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: ha_graduate_485
+    name: Temporary Graduate visa (subclass 485)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-graduate-485
+    category: visa_page
+    visa_hint: ["485"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: ha_skills_in_demand_482
+    name: Skills in Demand visa (subclass 482)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skills-in-demand-visa-subclass-482
+    category: visa_page
+    visa_hint: ["482"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: ha_regional_494
+    name: Skilled Employer Sponsored Regional (Provisional) visa (subclass 494)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skilled-employer-sponsored-regional-494
+    category: visa_page
+    visa_hint: ["494"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: ha_working_holiday_417
+    name: Working Holiday visa (subclass 417)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/work-holiday-417
+    category: visa_page
+    visa_hint: ["417"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: ha_visitor_600
+    name: Visitor visa (subclass 600)
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/visitor-600
+    category: visa_page
+    visa_hint: ["600"]
+    render: static
+    selector: main
+    priority: 1
+
+  # ---------- Home Affairs: processing times + news ----------
+  - key: ha_processing_times
+    name: Global visa processing times
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-processing-times/global-visa-processing-times
+    category: processing_times
+    visa_hint: ["500", "485", "482", "600", "417"]
+    render: js          # figures appear only after selecting a visa type in the page form
+    selector: main
+    priority: 2         # see README "Processing times" before relying on this source
+
+  - key: ha_news
+    name: Home Affairs immigration news
+    agency: Department of Home Affairs
+    url: https://immi.homeaffairs.gov.au/news-media/archive
+    category: news
+    visa_hint: []
+    render: js          # news list is loaded by script
+    selector: main
+    priority: 1
+
+  # ---------- Education / Study Australia ----------
+  - key: study_australia_news
+    name: Study Australia news
+    agency: Study Australia (Austrade)
+    url: https://www.studyaustralia.gov.au/en/tools-and-resources/news
+    category: news
+    visa_hint: ["500", "485"]
+    render: static
+    selector: main
+    priority: 1
+
+  - key: education_international
+    name: Department of Education – international education
+    agency: Department of Education
+    url: https://www.education.gov.au/international-education
+    category: policy
+    visa_hint: ["500"]
+    render: static
+    selector: main
+    priority: 1
+
+  # ---------- Workplace / compliance ----------
+  - key: fairwork_visa_holders
+    name: Fair Work – visa holders and migrants
+    agency: Fair Work Ombudsman
+    url: https://www.fairwork.gov.au/find-help-for/visa-holders-migrants
+    category: workplace
+    visa_hint: ["500", "485", "482", "417"]
+    render: static
+    selector: main
+    priority: 1
+
+  # ---------- Overseas health cover rules ----------
+  - key: privatehealth_overseas
+    name: privatehealth.gov.au – overseas visitors & students cover
+    agency: Commonwealth Ombudsman (privatehealth.gov.au)
+    url: https://www.privatehealth.gov.au/health_insurance/overseas/
+    category: policy
+    visa_hint: ["500", "485", "482", "600"]
+    render: static
+    selector: main
+    priority: 2
