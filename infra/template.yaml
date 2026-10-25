@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Module 3 - Visa & Regulatory Change Monitor (daily, Melbourne time)
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: Supabase Transaction pooler URI (port 6543). The code disables prepared statements for it.
+  OpenAiApiKey:
+    Type: String
+    NoEcho: true
+  AlertWebhookUrl:
+    Type: String
+    Default: ""
+    NoEcho: true
+  RunTime:
+    Type: String
+    Default: "cron(0 7 * * ? *)"     # 7:00 am every day
+    Description: EventBridge Scheduler cron expression, evaluated in Australia/Melbourne
+
+Resources:
+  ExportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  VisaMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build/lambda/      # created by: python scripts/build_lambda.py
+      Handler: visa_monitor.handler.lambda_handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          STORAGE_BACKEND: postgres
+          DATABASE_URL: !Ref DatabaseUrl
+          OPENAI_API_KEY: !Ref OpenAiApiKey
+          OPENAI_MODEL: gpt-4o-mini
+          ALERT_WEBHOOK_URL: !Ref AlertWebhookUrl
+          ALERT_MIN_LEVEL: High
+          TIMEZONE: Australia/Melbourne
+          ENABLE_JS_RENDER: "false"   # no browser in the zip package; see Dockerfile.playwright
+          SOURCES_FILE: /var/task/visa_monitor/sources.yaml
+          EXPORT_BUCKET: !Ref ExportBucket
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref ExportBucket }
+      Events:
+        DailyRun:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref RunTime
+            ScheduleExpressionTimezone: Australia/Melbourne
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+
+  FailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Visa monitor Lambda errored
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref VisaMonitorFunction }]
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  FunctionName: { Value: !Ref VisaMonitorFunction }
+  ExportBucketName: { Value: !Ref ExportBucket }

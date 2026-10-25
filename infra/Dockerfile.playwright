@@ -1,0 +1,11 @@
+# Container-image Lambda with headless Chromium for JS-rendered sources
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+RUN pip install --no-cache-dir awslambdaric
+COPY requirements-lambda.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements-lambda.txt playwright
+COPY src/ /var/task/
+COPY config/sources.yaml /var/task/visa_monitor/sources.yaml
+WORKDIR /var/task
+ENV ENABLE_JS_RENDER=true SOURCES_FILE=/var/task/visa_monitor/sources.yaml
+ENTRYPOINT ["python", "-m", "awslambdaric"]
+CMD ["visa_monitor.handler.lambda_handler"]
