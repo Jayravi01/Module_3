@@ -1,0 +1,28 @@
+2026-10-12 20:57:33,994 Run 2026-10-12: 12 sources, classifier=rules
+2026-10-12 20:57:41,419   ● ha_student_500 — baseline stored
+2026-10-12 20:57:46,922   ● ha_graduate_485 — baseline stored
+2026-10-12 20:57:52,325   ● ha_skills_in_demand_482 — baseline stored
+2026-10-12 20:57:57,775   ● ha_regional_494 — baseline stored
+2026-10-12 20:58:03,061   ● ha_working_holiday_417 — baseline stored
+2026-10-12 20:58:08,559   ● ha_visitor_600 — baseline stored
+2026-10-12 20:58:13,360   ● ha_processing_times — baseline stored
+2026-10-12 20:58:20,893   ● ha_news — baseline stored
+2026-10-12 20:58:23,051   ● study_australia_news — baseline stored
+2026-10-12 20:58:25,303   ● education_international — baseline stored
+2026-10-12 20:58:27,695   ● fairwork_visa_holders — baseline stored
+2026-10-12 20:58:29,937   ● privatehealth_overseas — baseline stored
+2026-10-12 20:58:29,990 Run complete: {'run_date': '2026-10-12', 'status': 'success', 'checked': 12, 'failed': 0, 'core_total': 10, 'core_ok': 10, 'baselines': 12, 'changes': 0, 'alerts': 0}
+2026-10-25 16:37:36,007 Run 2026-10-25: 12 sources, classifier=rules
+2026-10-25 16:37:44,740   ▲ ha_student_500 — Low impact change
+2026-10-25 16:37:50,201   ▲ ha_graduate_485 — Low impact change
+2026-10-25 16:37:55,639   = ha_skills_in_demand_482 — no change
+2026-10-25 16:38:00,956   = ha_regional_494 — no change
+2026-10-25 16:38:06,449   = ha_working_holiday_417 — no change
+2026-10-25 16:38:11,962   = ha_visitor_600 — no change
+2026-10-25 16:38:16,824   = ha_processing_times — no change
+2026-10-25 16:38:24,118   = ha_news — no change
+2026-10-25 16:38:26,311   = study_australia_news — no change
+2026-10-25 16:38:28,597   = education_international — no change
+2026-10-25 16:38:30,995   = fairwork_visa_holders — no change
+2026-10-25 16:38:33,246   = privatehealth_overseas — no change
+2026-10-25 16:38:33,319 Run complete: {'run_date': '2026-10-25', 'status': 'success', 'checked': 12, 'failed': 0, 'core_total': 10, 'core_ok': 10, 'baselines': 0, 'changes': 2, 'alerts': 0}
