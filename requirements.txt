@@ -1,0 +1,11 @@
+requests>=2.31
+beautifulsoup4>=4.12
+pyyaml>=6.0
+pydantic>=2.6
+openai>=1.40
+psycopg[binary]>=3.1
+python-dotenv>=1.0
+tzdata>=2024.1
+pytest>=8.0
+# JavaScript-rendered pages (after install run: playwright install chromium)
+playwright>=1.47
