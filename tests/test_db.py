@@ -134,7 +134,8 @@ def test_tables_and_views_are_created_inside_the_schema(pg_store):
     names = {r[0] for r in pg_store.query(
         "select table_name from information_schema.tables where table_schema = %s", (TEST_SCHEMA,))}
     assert {"sources", "page_snapshots", "regulatory_records", "run_log", "alerts",
-            "v_regulatory_feed", "v_records_by_visa", "v_daily_kpis"} <= names
+            "v_regulatory_feed", "v_records_by_visa", "v_daily_kpis",
+            "tableau_records", "tableau_visa_by_record", "tableau_run_log", "tableau_source_status"} <= names
 
 
 @needs_pg
@@ -161,3 +162,57 @@ def test_schema_sql_is_safe_to_apply_again(pg_store):
     run(pg_store, D1, V1)
     db.apply_schema(pg_store.conn, TEST_SCHEMA)        # every run does this
     assert _count(pg_store, "select count(*) from regulatory_records") == 2
+
+
+# ----------------------------------------------------------------- Tableau views (3.5)
+from datetime import date  # noqa: E402
+
+from visa_monitor.scraper import FetchResult  # noqa: E402
+
+CSV_HEADERS = ["Record ID", "Record Date", "Record Type", "Title", "Change Summary", "Effective Date",
+               "Visa Categories Affected", "Change Type", "Impact Level", "Impact Assessment",
+               "Affects Health Cover", "Confidence", "Classifier", "Source Link", "Source", "Agency",
+               "Source Category", "Detected At"]
+
+
+def _columns(store, view):
+    return [r[0] for r in store.query(
+        "select column_name from information_schema.columns where table_schema = %s and table_name = %s "
+        "order by ordinal_position", (TEST_SCHEMA, view))]
+
+
+@needs_pg
+def test_tableau_views_keep_the_csv_column_names(pg_store):
+    """The workbook was built on CSV headers: the views must use exactly the same names."""
+    assert _columns(pg_store, "tableau_records")[:18] == CSV_HEADERS
+    assert _columns(pg_store, "tableau_visa_by_record") == ["Record ID", "Visa Subclass"]
+    assert _columns(pg_store, "tableau_run_log")[:3] == ["run_date", "started_at", "finished_at"]
+
+
+@needs_pg
+def test_tableau_views_content(pg_store):
+    run(pg_store, D1, V1)
+    run(pg_store, D3, V2)
+    rows = pg_store.query('select "Record Type", "Visa Basis", "Effective Date" from tableau_records '
+                          'where "Record Type" = %s', ("change",))
+    assert len(rows) == 2 and all(r[1] in ("stated", "inferred", "none") for r in rows)
+    visas = pg_store.query('select distinct "Visa Subclass" from tableau_visa_by_record')
+    assert visas == [(500,)]
+    finished = pg_store.query("select finished_at from tableau_run_log order by run_date")[0][0]
+    assert len(finished) == 19 and finished[10] == "T"
+
+
+@needs_pg
+def test_source_status_ok_blocked_unavailable(pg_store):
+    ids = pg_store.sync_sources([
+        {"key": k, "name": k, "url": f"https://example.gov.au/{k}", "priority": p}
+        for k, p in (("ok", 1), ("blocked", 1), ("down", 2), ("new", 1))])
+    day = date(2026, 11, 3)
+    pg_store.save_snapshot(ids["ok"], day, FetchResult("u", True, 200, "text", "h"))
+    pg_store.save_snapshot(ids["blocked"], day, FetchResult("u", False, 403, None, None, "HTTP 403 via static"))
+    pg_store.save_snapshot(ids["down"], day, FetchResult("u", False, 503, None, None, "HTTP 503"))
+    pg_store.commit()
+    status = dict(pg_store.query('select "Source", "Status" from tableau_source_status'))
+    assert status == {"ok": "OK", "blocked": "Scrape blocked", "down": "Unavailable", "new": "Not checked yet"}
+    prio = dict(pg_store.query('select "Source", "Priority" from tableau_source_status'))
+    assert prio["down"] == "Secondary" and prio["ok"] == "Core"

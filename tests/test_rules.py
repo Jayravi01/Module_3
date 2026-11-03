@@ -152,3 +152,38 @@ def test_existing_tables_from_milestone_3_2_are_upgraded(tmp_path):
         admin.execute(f"DROP SCHEMA IF EXISTS {UPGRADE_SCHEMA} CASCADE")
         admin.commit()
         admin.close()
+
+
+# ----------------------------------------------------------------- retag old baselines (3.5)
+def test_retag_old_baselines_once(tmp_path, monkeypatch):
+    """A baseline stored by the old rules is corrected; changes are never touched; re-run = 0."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    monkeypatch.chdir(ROOT)
+    import importlib
+    import _bootstrap  # noqa: F401
+    retag = importlib.import_module("retag_baselines")
+    from visa_monitor.scraper import FetchResult
+    from visa_monitor.storage import SQLiteStore
+    store = SQLiteStore(str(tmp_path / "t.db"))
+    ids = store.sync_sources([{**STUDENT, "url": STUDENT["url"]}])
+    day = date(2026, 11, 3)
+    page = "Student visa (subclass 500). Later: Temporary Graduate visa (subclass 485)."
+    store.save_snapshot(ids["s500"], day, FetchResult("u", True, 200, page, "h"))
+    old = RegulatoryRecord(title="Baseline", change_summary="s", visa_categories=["500", "485"],
+                           change_type="processing_time")
+    store.insert_record(ids["s500"], day, "baseline", old, "u", None)
+    change = RegulatoryRecord(title="Change", change_summary="c", visa_categories=["485"],
+                              change_type="fees", impact_level="Medium")
+    store.insert_record(ids["s500"], date(2026, 11, 4), "change", change, "u", None)
+    store.commit()
+    todo = retag.plan(store)
+    assert len(todo) == 1 and todo[0][3] == (["500"], "baseline", "stated", "none", "none", "Low")
+    for rid, _n, _o, new in todo:
+        store._exec("update regulatory_records set visa_categories=?, change_type=?, visa_basis=? where id=?",
+                    (store._arr(new[0]), new[1], new[2], rid))
+    store._exec("update regulatory_records set effective_date_basis='none', impact_basis='none' "
+                "where record_type='baseline'")
+    store.commit()
+    assert retag.plan(store) == []
+    feed = {r["record_type"]: r for r in store.feed()}
+    assert feed["change"]["visa_categories"] == "485"        # change row untouched
