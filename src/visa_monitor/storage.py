@@ -1,7 +1,8 @@
 """Storage layer. Two interchangeable back ends with the same interface:
 
-* PostgresStore — Supabase (production). Uses sql/001_schema.sql.
-* SQLiteStore   — local demo and automated tests, zero setup.
+* PostgresStore — AWS RDS PostgreSQL, schema ``visa`` (production). Tables and views come
+  from sql/001_schema.sql; the connection (opened by db.open_store) sets search_path=visa.
+* SQLiteStore   — local file for offline runs and the automated tests, zero setup.
 
 Every write is an INSERT; history is never overwritten. The only exception is
 re-trying a source that FAILED earlier the same day, which replaces that
@@ -230,53 +231,12 @@ class SQLiteStore(BaseStore):
 
 
 class PostgresStore(BaseStore):
+    """Wraps an open psycopg connection (from db.connect, search_path already set)."""
     ph = "%s"
     array_as_json = False
-
-    def __init__(self, dsn: str):
-        import psycopg  # psycopg 3
-        super().__init__(psycopg.connect(**pg_connect_kwargs(dsn)))
-
-    def apply_schema(self, schema_path: str | Path) -> None:
-        """Create tables and views from sql/001_schema.sql (safe to run again)."""
-        self.conn.execute(Path(schema_path).read_text(encoding="utf-8"))
-        self.commit()
-
 
     def _returning(self) -> str:
         return " returning id"
 
     def _last_id(self, cur) -> int:
         return cur.fetchone()[0]
-
-
-def pg_connect_kwargs(dsn: str) -> dict:
-    """Connection options that work with Supabase, locally and on AWS Lambda.
-
-    * Supabase's pooler (Supavisor, port 6543, transaction mode) does not support
-      server-side prepared statements. psycopg 3 prepares a query after it has run
-      5 times, which then fails mid-run with 'prepared statement ... does not exist'.
-      prepare_threshold=None turns that off. Harmless on a direct connection.
-    * Supabase requires SSL; sslmode=require is added for supabase hosts unless the
-      URL already sets it.
-    * connect_timeout stops a Lambda from hanging for 15 minutes on a bad URL.
-    """
-    from urllib.parse import parse_qs, urlparse
-
-    dsn = dsn.strip()
-    query = parse_qs(urlparse(dsn).query) if "://" in dsn else {}
-    kwargs: dict = {"conninfo": dsn, "prepare_threshold": None}
-    host = (urlparse(dsn).hostname or "") if "://" in dsn else ""
-    if "supabase." in host and "sslmode" not in query:
-        kwargs["sslmode"] = "require"
-    if "connect_timeout" not in query:
-        kwargs["connect_timeout"] = 15
-    return kwargs
-
-
-def get_store(settings) -> BaseStore:
-    if settings.storage_backend == "postgres":
-        if not settings.database_url:
-            raise RuntimeError("STORAGE_BACKEND=postgres but DATABASE_URL is empty")
-        return PostgresStore(settings.database_url)
-    return SQLiteStore(settings.sqlite_path)

@@ -64,7 +64,7 @@ class FakeScraper:
 
 
 def settings():
-    return Settings(openai_api_key="", alert_webhook_url="")
+    return Settings(openai_api_key="", storage_backend="sqlite")
 
 
 def run(store, day, pages):

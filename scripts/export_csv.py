@@ -6,16 +6,14 @@
 import argparse
 from datetime import date
 
-import _bootstrap  # noqa: F401
-from visa_monitor.config import Settings
+import _bootstrap
 from visa_monitor.export import export_csv
-from visa_monitor.storage import get_store
 
 p = argparse.ArgumentParser()
 p.add_argument("--start"); p.add_argument("--end")
 p.add_argument("--out", default="exports/regulatory_records.csv")
 a = p.parse_args()
-store = get_store(Settings())
+store = _bootstrap.open_store()
 path = export_csv(store, a.out,
                   date.fromisoformat(a.start) if a.start else None,
                   date.fromisoformat(a.end) if a.end else None)

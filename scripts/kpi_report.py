@@ -2,12 +2,10 @@
 import json
 from pathlib import Path
 
-import _bootstrap  # noqa: F401
-from visa_monitor.config import Settings
+import _bootstrap
 from visa_monitor.kpi import compute_kpis, kpi_markdown
-from visa_monitor.storage import get_store
 
-k = compute_kpis(get_store(Settings()))
+k = compute_kpis(_bootstrap.open_store())
 md = kpi_markdown(k)
 Path("reports").mkdir(exist_ok=True)
 Path("reports/kpi_scorecard.md").write_text(md, encoding="utf-8")

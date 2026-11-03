@@ -13,9 +13,8 @@ import textwrap
 from collections import Counter
 from datetime import date, datetime
 
-import _bootstrap  # noqa: F401
+import _bootstrap
 from visa_monitor.config import Settings
-from visa_monitor.storage import get_store
 
 WIDTH = shutil.get_terminal_size((120, 40)).columns
 
@@ -49,7 +48,7 @@ p.add_argument("--id", type=int, help="show full details of one record")
 a = p.parse_args()
 
 settings = Settings()
-store = get_store(settings)
+store = _bootstrap.open_store()
 feed = store.feed()
 runs = store.runs()
 

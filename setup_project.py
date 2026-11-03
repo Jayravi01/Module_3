@@ -135,9 +135,10 @@ def main():
     print(f"""
 Setup complete.
 Next:
-  1. (optional) add OPENAI_API_KEY to .env
+  1. fill the DB_* and TUNNEL_* lines in .env (copy them from Module 2 or 4)
   2. {activate}
-  3. python scripts{sep}run_daily.py
+  3. python scripts{sep}db_check.py
+  4. python scripts{sep}run_daily.py
 """)
 
 

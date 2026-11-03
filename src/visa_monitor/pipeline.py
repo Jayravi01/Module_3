@@ -17,13 +17,13 @@ from .classifier import Classifier
 from .config import Settings, load_sources
 from .diff import diff_pages
 from .scraper import Scraper
-from .storage import BaseStore, get_store
+from .storage import BaseStore, SQLiteStore
 
 log = logging.getLogger(__name__)
 
 
 def melbourne_today(settings: Settings) -> date:
-    """The run date is the Melbourne calendar date, not UTC (Lambda runs in UTC)."""
+    """The run date is the Melbourne calendar date, whatever the computer's time zone."""
     return datetime.now(settings.tz).date()
 
 
@@ -31,7 +31,7 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
               scraper: Optional[Scraper] = None, classifier: Optional[Classifier] = None,
               run_date: Optional[date] = None, sources: Optional[list[dict]] = None) -> dict:
     settings = settings or Settings()
-    store = store or get_store(settings)
+    store = store or SQLiteStore(settings.sqlite_path)
     scraper = scraper or Scraper(settings)
     classifier = classifier or Classifier(settings)
     day = run_date or melbourne_today(settings)
@@ -86,7 +86,7 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
                         stats["changes"] += 1
                         log.info("  ▲ %s — %s impact change", src["key"], rec.impact_level)
                         if should_alert(rec, settings.alert_min_level):
-                            channel, ok = send_alert(format_alert(rec, src), settings.alert_webhook_url)
+                            channel, ok = send_alert(format_alert(rec, src))
                             store.log_alert(rid, day, rec.impact_level, channel, ok)
                             stats["alerts"] += ok
         store.commit()

@@ -12,16 +12,13 @@ import csv
 import random
 from pathlib import Path
 
-import _bootstrap  # noqa: F401
-from visa_monitor.config import Settings
-from visa_monitor.storage import get_store
-
-store = get_store(Settings())
+import _bootstrap
 p = argparse.ArgumentParser()
 sub = p.add_subparsers(dest="cmd", required=True)
 s = sub.add_parser("sample"); s.add_argument("--n", type=int, default=50); s.add_argument("--seed", type=int, default=42)
 l = sub.add_parser("load"); l.add_argument("file"); l.add_argument("--reviewer", default="reviewer")
 a = p.parse_args()
+store = _bootstrap.open_store()
 
 if a.cmd == "sample":
     rows = [r for r in store.feed() if r["record_type"] == "change"]

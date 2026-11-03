@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Private settings (passwords, keys) - never in Git
+.env
+
+# Local SQLite history (offline runs / tests); the real history is in AWS RDS
+data/*.db
+
+# Run output
+logs/
+reports/
+debug/

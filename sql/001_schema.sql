@@ -1,5 +1,7 @@
 -- Module 3 — Visa & Regulatory Change Monitor
--- Supabase / PostgreSQL schema. Run once in the Supabase SQL editor.
+-- AWS RDS PostgreSQL, schema "visa" (database medibank). Applied automatically on every
+-- run by visa_monitor.db.apply_schema (also: python scripts\db_check.py). The connection's
+-- search_path is set to visa, so the names below are created inside that schema.
 --
 -- Design rule: the pipeline is APPEND-ONLY. Daily runs insert rows stamped
 -- with the Melbourne-local date; nothing is updated in place or deleted, so

@@ -1,12 +1,10 @@
-"""Alert engine: pushes High (or above a chosen level) impact changes to a
-Microsoft Teams / Slack incoming webhook. With no webhook configured, alerts
-are logged only, so the pipeline still records what *would* have been sent.
+"""Alert engine: decides which changes need attention (High, or above ALERT_MIN_LEVEL)
+and formats them. Each alert is written to the log and to the alerts table; the email
+that delivers them is added by the daily scheduler (milestone 3.2).
 """
 from __future__ import annotations
 
 import logging
-
-import requests
 
 from .classifier import RegulatoryRecord
 
@@ -29,14 +27,7 @@ def format_alert(rec: RegulatoryRecord, source: dict) -> str:
             f"Source: {source['name']} — {source['url']}")
 
 
-def send_alert(text: str, webhook_url: str) -> tuple[str, bool]:
-    if not webhook_url:
-        log.info("ALERT (no webhook configured):\n%s", text)
-        return "log", True
-    try:
-        # {"text": ...} is accepted by both Slack and Teams incoming webhooks
-        r = requests.post(webhook_url, json={"text": text}, timeout=15)
-        return "webhook", r.ok
-    except requests.RequestException:
-        log.exception("Webhook alert failed")
-        return "webhook", False
+def send_alert(text: str) -> tuple[str, bool]:
+    """Record the alert in the log. Returns (channel, delivered)."""
+    log.info("ALERT:\n%s", text)
+    return "log", True

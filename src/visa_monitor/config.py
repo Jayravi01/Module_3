@@ -1,4 +1,4 @@
-"""Runtime settings, loaded from environment variables (see .env.example)."""
+"""Runtime settings, loaded from environment variables (.env, see .env.example)."""
 from __future__ import annotations
 
 import os
@@ -9,10 +9,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_PROJECT_SOURCES = PROJECT_ROOT / "config" / "sources.yaml"
-_PACKAGED_SOURCES = Path(__file__).resolve().parent / "sources.yaml"   # copied in by build_lambda.py
-# Locally the project's config/ file is used; inside the Lambda package the bundled copy is.
-DEFAULT_SOURCES_FILE = _PROJECT_SOURCES if _PROJECT_SOURCES.exists() else _PACKAGED_SOURCES
+DEFAULT_SOURCES_FILE = PROJECT_ROOT / "config" / "sources.yaml"
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -21,9 +18,10 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    # Storage: "postgres" (Supabase) or "sqlite" (local demo / tests)
-    storage_backend: str = field(default_factory=lambda: os.getenv("STORAGE_BACKEND", "sqlite"))
-    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
+    # Storage: "postgres" (AWS RDS, schema visa) or "sqlite" (offline / tests).
+    # Default: postgres when DB_HOST is set in .env, otherwise sqlite.
+    storage_backend: str = field(default_factory=lambda: os.getenv(
+        "STORAGE_BACKEND", "postgres" if os.getenv("DB_HOST", "").strip() else "sqlite").strip().lower())
     sqlite_path: str = field(default_factory=lambda: os.getenv("SQLITE_PATH", "data/visa_monitor.db"))
 
     # LLM
@@ -42,7 +40,6 @@ class Settings:
     enable_js_render: bool = field(default_factory=lambda: _env_bool("ENABLE_JS_RENDER", True))
 
     # Alerts
-    alert_webhook_url: str = field(default_factory=lambda: os.getenv("ALERT_WEBHOOK_URL", ""))
     alert_min_level: str = field(default_factory=lambda: os.getenv("ALERT_MIN_LEVEL", "High"))
 
     # Time
