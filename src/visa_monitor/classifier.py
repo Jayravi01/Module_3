@@ -315,6 +315,12 @@ class Classifier:
             try:
                 data = clean_llm_answer(self._call_llm(prompt))
                 rec = RegulatoryRecord(**data, classifier=self.settings.ollama_model)
+                # Decision 3 Nov: the change TYPE comes from the deterministic keyword rules (a
+                # small model picked 'policy' or 'fees' for an OSHC change); the AI writes the
+                # summary, impact and reason. Health cover = AI OR rules (never miss an OSHC hit).
+                rules = rules_classify(fallback_text, source, mode)
+                rec.change_type = rules.change_type
+                rec.affects_health_cover = rec.affects_health_cover or rules.affects_health_cover
                 return apply_basis(rec, mode, fallback_text, source)
             except Exception:
                 log.exception("LLM classification failed; using rule-based fallback")

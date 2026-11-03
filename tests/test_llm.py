@@ -111,7 +111,8 @@ def test_messy_answer_is_cleaned_not_rejected(monkeypatch):
     ollama(monkeypatch, answer=messy)
     rec = clf().classify_change(CHANGE, SRC)
     assert rec.classifier == "qwen2.5:3b" and rec.impact_level == "High"
-    assert rec.change_type == "other" and rec.confidence == 1.0
+    assert C.clean_llm_answer(messy)["change_type"] == "other"     # unknown type cleaned...
+    assert rec.change_type == "health_insurance" and rec.confidence == 1.0   # ...then rules decide
     assert rec.effective_date is None and rec.effective_date_basis == "none"
     assert rec.visa_categories == ["485"] and rec.visa_basis == "inferred"   # 485 not in the changed text
 
@@ -135,3 +136,11 @@ def test_prompt_defines_every_change_type():
     for change_type in C.CHANGE_TYPES:
         assert f"{change_type} = " in C.SYSTEM_PROMPT
     assert C.SYSTEM_PROMPT.index("health_insurance = ") < C.SYSTEM_PROMPT.index("policy = ")
+
+
+def test_change_type_comes_from_the_rules_not_the_model(monkeypatch):
+    ollama(monkeypatch, answer={**GOOD, "change_type": "fees", "affects_health_cover": False})
+    rec = clf().classify_change(CHANGE, SRC)
+    assert rec.classifier == "qwen2.5:3b"                      # summary/impact still from the AI
+    assert rec.change_type == "health_insurance"               # 'OSHC' in the changed line
+    assert rec.affects_health_cover is True                    # rules found OSHC even if the AI did not
