@@ -187,3 +187,38 @@ def test_retag_old_baselines_once(tmp_path, monkeypatch):
     assert retag.plan(store) == []
     feed = {r["record_type"]: r for r in store.feed()}
     assert feed["change"]["visa_categories"] == "485"        # change row untouched
+
+
+# ----------------------------------------------------------------- import October history (3.5)
+def test_import_history_cleans_applies_rules_and_is_repeatable(tmp_path, monkeypatch):
+    sys.path.insert(0, str(ROOT / "scripts"))
+    monkeypatch.chdir(ROOT)
+    import importlib
+    imp = importlib.import_module("import_history")
+    from visa_monitor.storage import SQLiteStore
+    store = SQLiteStore(str(tmp_path / "h.db"))
+    store.sync_sources([{**STUDENT}])
+    header = ("Record ID,Record Date,Record Type,Title,Change Summary,Effective Date,Visa Categories Affected,"
+              "Change Type,Impact Level,Impact Assessment,Affects Health Cover,Confidence,Classifier,Source Link,"
+              "Source,Agency,Source Category,Detected At\n")
+    rows = ('1,2026-10-29,change,Change,"​​Students need OSHC  from arrival",,500,health_insurance,High,'
+            'r,True,0.4,rules,https://x/500,Student visa (subclass 500),HA,visa_page,2026-10-29 12:06:34\n'
+            '2,2026-10-12,baseline,Baseline,"Initial snapshot",,"500, 590, 485",policy,Low,b,False,0.4,rules,'
+            'https://x/500,Student visa (subclass 500),HA,visa_page,2026-10-12 20:57:41\n'
+            '3,2026-10-12,baseline,Baseline,"x",,,policy,Low,b,False,0.4,rules,u,Unknown page,A,c,2026-10-12 20:57:41\n')
+    runs = ("run_date,started_at,finished_at,sources_checked,sources_failed,core_sources_total,core_sources_ok,"
+            "baselines_created,changes_found,alerts_sent,status\n"
+            "2026-10-29,2026-10-29T12:06:26+11:00,2026-10-29T12:07:24+11:00,12,0,10,10,0,1,1,success\n")
+    records, run_rows, skipped = imp.plan(store, header + rows, runs)
+    assert len(records) == 2 and len(run_rows) == 1 and any("Unknown page" in m for m in skipped)
+    change = next(r for r in records if r[2] == "change")[3]
+    assert change.change_summary == "Students need OSHC from arrival" and change.impact_level == "High"
+    base = next(r for r in records if r[2] == "baseline")[3]
+    assert base.visa_categories == ["500"] and base.change_type == "baseline"
+    for sid, day, kind, rec, url, det, _n in records:
+        store.insert_record(sid, day, kind, rec, url, None, det)
+    for run in run_rows:
+        store.log_run(run)
+    store.commit()
+    again, again_runs, _ = imp.plan(store, header + rows, runs)
+    assert again == [] and again_runs == []
