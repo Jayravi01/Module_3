@@ -21,7 +21,7 @@ STUDENT = {"key": "s500", "name": "Student visa (subclass 500)", "agency": "Home
            "url": "https://example.gov.au/500", "category": "visa_page", "visa_hint": ["500"]}
 NEWS = {"key": "news", "name": "Minister media releases", "agency": "Minister",
         "url": "https://example.gov.au/news", "category": "media_release", "visa_hint": []}
-clf = Classifier(Settings(openai_api_key="", storage_backend="sqlite"))
+clf = Classifier(Settings(llm_enabled=False, storage_backend="sqlite"))
 
 
 # ----------------------------------------------------------------- visa tags

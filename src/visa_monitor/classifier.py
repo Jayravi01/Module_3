@@ -1,9 +1,11 @@
 """Turn a page (baseline) or a diff (change) into a structured regulatory record.
 
-Primary path: OpenAI GPT with a strict JSON schema, so every response has
-exactly the dashboard fields Medibank asked for. Fallback path: deterministic
-keyword rules, used when no API key is set or the API call fails, so the daily
-run never stops and the record is clearly labelled classifier='rules'.
+Primary path for CHANGES: a local LLM (Ollama, model qwen2.5:3b) asked to answer in a
+fixed JSON schema, so every response has exactly the dashboard fields Medibank asked for.
+Nothing leaves the laptop and there is no API cost. Fallback: deterministic keyword rules,
+used when Ollama is not running, the model is not downloaded, or its answer is invalid,
+so the daily run never stops; such records are labelled classifier='rules'.
+BASELINES (first snapshot of a page) always use the rules (decision 3 Nov).
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import re
 from datetime import date
 from typing import Literal
 
+import requests
 from pydantic import BaseModel, Field, field_validator
 
 from .config import Settings
@@ -82,27 +85,24 @@ Rules:
 - confidence: your confidence (0-1) that the classification is correct.
 - Write the summary in plain business English, 1-3 sentences."""
 
-JSON_SCHEMA = {
-    "name": "regulatory_record",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["title", "change_summary", "effective_date", "visa_categories",
-                     "change_type", "impact_level", "impact_reason",
-                     "affects_health_cover", "confidence", "is_substantive"],
-        "properties": {
-            "title": {"type": "string"},
-            "change_summary": {"type": "string"},
-            "effective_date": {"type": ["string", "null"]},
-            "visa_categories": {"type": "array", "items": {"type": "string"}},
-            "change_type": {"type": "string", "enum": CHANGE_TYPES},
-            "impact_level": {"type": "string", "enum": ["High", "Medium", "Low"]},
-            "impact_reason": {"type": "string"},
-            "affects_health_cover": {"type": "boolean"},
-            "confidence": {"type": "number"},
-            "is_substantive": {"type": "boolean"},
-        },
+# The answer format Ollama must follow ("structured outputs": the model can only produce
+# JSON that matches this schema). pydantic (RegulatoryRecord) checks it again afterwards.
+LLM_SCHEMA = {
+    "type": "object",
+    "required": ["title", "change_summary", "effective_date", "visa_categories",
+                 "change_type", "impact_level", "impact_reason",
+                 "affects_health_cover", "confidence", "is_substantive"],
+    "properties": {
+        "title": {"type": "string"},
+        "change_summary": {"type": "string"},
+        "effective_date": {"type": ["string", "null"]},
+        "visa_categories": {"type": "array", "items": {"type": "string"}},
+        "change_type": {"type": "string", "enum": CHANGE_TYPES},
+        "impact_level": {"type": "string", "enum": ["High", "Medium", "Low"]},
+        "impact_reason": {"type": "string"},
+        "affects_health_cover": {"type": "boolean"},
+        "confidence": {"type": "number"},
+        "is_substantive": {"type": "boolean"},
     },
 }
 
@@ -226,51 +226,93 @@ def rules_classify(text: str, source: dict, mode: str) -> RegulatoryRecord:
 
 
 # ------------------------------------------------------------------- LLM
+# Ollama runs on this computer: never send its traffic through a proxy set in the environment.
+LOCAL = {"http": None, "https": None}
+
+
+def clean_llm_answer(data: dict) -> dict:
+    """Make a small model's JSON safe for RegulatoryRecord: keep only known keys, fix casing,
+    turn unknown change types into 'other', clamp confidence to 0..1, and drop a date that is
+    not a real YYYY-MM-DD date (a wrong date is worse than no date)."""
+    keys = set(LLM_SCHEMA["properties"])
+    out = {k: v for k, v in (data or {}).items() if k in keys}
+    level = str(out.get("impact_level", "Low")).strip().capitalize()
+    out["impact_level"] = level if level in ("High", "Medium", "Low") else "Low"
+    ctype = str(out.get("change_type", "other")).strip().lower().replace(" ", "_")
+    out["change_type"] = ctype if ctype in CHANGE_TYPES else "other"
+    try:
+        out["confidence"] = min(1.0, max(0.0, float(out.get("confidence", 0.5))))
+    except (TypeError, ValueError):
+        out["confidence"] = 0.5
+    raw_date = out.get("effective_date")
+    try:
+        out["effective_date"] = date.fromisoformat(str(raw_date)[:10]) if raw_date else None
+    except ValueError:
+        out["effective_date"] = None
+    out["title"] = str(out.get("title") or "Change detected")[:200]
+    out["visa_categories"] = [str(v) for v in (out.get("visa_categories") or [])]
+    return out
+
+
 class Classifier:
+    """Rates changes with the local LLM when it is available, otherwise with the rules."""
+
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
-        self._client = None
-        if self.settings.openai_api_key:
-            from openai import OpenAI
-            self._client = OpenAI(api_key=self.settings.openai_api_key)
+        self._available: bool | None = None       # checked once, on first use
+
+    # -- is Ollama there? ---------------------------------------------------
+    def check_llm(self) -> tuple[bool, str]:
+        """(available, reason). Ollama must be running AND the model downloaded."""
+        if not self.settings.llm_enabled:
+            return False, "LLM switched off (USE_LLM=false)"
+        try:
+            r = requests.get(f"{self.settings.ollama_url}/api/tags", timeout=5, proxies=LOCAL)
+            r.raise_for_status()
+        except requests.RequestException:
+            return False, f"Ollama is not running at {self.settings.ollama_url}"
+        names = {m.get("name", "") for m in r.json().get("models", [])}
+        wanted = self.settings.ollama_model
+        if wanted not in names and f"{wanted}:latest" not in names:
+            return False, f"model {wanted} not downloaded (run: ollama pull {wanted})"
+        return True, f"Ollama {wanted}"
 
     @property
     def uses_llm(self) -> bool:
-        return self._client is not None
+        if self._available is None:
+            self._available, reason = self.check_llm()
+            log.info("Classifier: %s", reason if self._available else f"keyword rules ({reason})")
+        return self._available
 
+    @property
+    def label(self) -> str:
+        return self.settings.ollama_model if self.uses_llm else "rules"
+
+    # -- one LLM call ---------------------------------------------------------
     def _call_llm(self, user_prompt: str) -> dict:
-        resp = self._client.chat.completions.create(   # type: ignore[union-attr]
-            model=self.settings.openai_model,
-            temperature=0,
-            response_format={"type": "json_schema", "json_schema": JSON_SCHEMA},
-            messages=[{"role": "system", "content": SYSTEM_PROMPT},
-                      {"role": "user", "content": user_prompt}],
-        )
-        return json.loads(resp.choices[0].message.content)
+        """POST to Ollama's chat API. temperature 0 = the same input gives the same answer."""
+        body = {"model": self.settings.ollama_model, "stream": False, "format": LLM_SCHEMA,
+                "options": {"temperature": 0},
+                "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                             {"role": "user", "content": user_prompt}]}
+        r = requests.post(f"{self.settings.ollama_url}/api/chat", json=body,
+                          timeout=self.settings.llm_timeout, proxies=LOCAL)
+        r.raise_for_status()
+        return json.loads(r.json()["message"]["content"])
 
     def _run(self, prompt: str, fallback_text: str, source: dict, mode: str) -> RegulatoryRecord:
-        if self.uses_llm:
+        if mode == "change" and self.uses_llm:
             try:
-                data = self._call_llm(prompt)
-                if not data.get("effective_date"):
-                    data["effective_date"] = None
-                rec = RegulatoryRecord(**data, classifier=self.settings.openai_model)
-                if mode == "baseline":
-                    rec.is_substantive = True
+                data = clean_llm_answer(self._call_llm(prompt))
+                rec = RegulatoryRecord(**data, classifier=self.settings.ollama_model)
                 return apply_basis(rec, mode, fallback_text, source)
             except Exception:
                 log.exception("LLM classification failed; using rule-based fallback")
         return apply_basis(rules_classify(fallback_text, source, mode), mode, fallback_text, source)
 
     def summarise_baseline(self, text: str, source: dict) -> RegulatoryRecord:
-        text = text[: self.settings.llm_max_chars]
-        prompt = (f"SOURCE: {source['name']} ({source['agency']})\nURL: {source['url']}\n"
-                  f"Visa hints: {', '.join(source.get('visa_hint', [])) or 'none'}\n\n"
-                  "This is the FIRST snapshot of this page. Summarise the current key rules "
-                  "(eligibility, health-cover requirements, work rights, processing times, fees) "
-                  "as a baseline. Set impact_level to Low.\n\nPAGE TEXT:\n" + text)
-        return self._run(prompt, text, source, "baseline")
-
+        """First snapshot of a page: always the rules (no AI), impact Low."""
+        return self._run("", text[: self.settings.llm_max_chars], source, "baseline")
     def classify_change(self, diff, source: dict) -> RegulatoryRecord:
         """`diff` is a visa_monitor.diff.PageDiff."""
         prompt = (f"SOURCE: {source['name']} ({source['agency']})\nURL: {source['url']}\n"

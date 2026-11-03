@@ -64,7 +64,7 @@ class FakeScraper:
 
 
 def settings():
-    return Settings(openai_api_key="", storage_backend="sqlite")
+    return Settings(llm_enabled=False, storage_backend="sqlite")
 
 
 def run(store, day, pages):
@@ -156,7 +156,7 @@ def test_csv_and_kpis(tmp_path):
 
 def test_llm_path_uses_structured_output(monkeypatch):
     clf = Classifier(settings())
-    clf._client = object()   # pretend an API key is configured
+    clf._available = True    # pretend Ollama is running with the model downloaded
     fake = {"title": "OSHC start-date rule", "change_summary": "OSHC must start on arrival.",
             "effective_date": "2027-01-01", "visa_categories": ["subclass 500"],
             "change_type": "health_insurance", "impact_level": "High",
@@ -165,15 +165,15 @@ def test_llm_path_uses_structured_output(monkeypatch):
     monkeypatch.setattr(clf, "_call_llm", lambda prompt: fake)
     d = diff_pages("a\nb", "a\nb\nOSHC must start on arrival from 1 January 2027")
     rec = clf.classify_change(d, SRC[0])
-    assert rec.classifier == "gpt-4o-mini" and rec.visa_categories == ["500"]
+    assert rec.classifier == "qwen2.5:3b" and rec.visa_categories == ["500"]
     assert rec.effective_date == date(2027, 1, 1)
 
 
 def test_llm_failure_falls_back_to_rules(monkeypatch):
     clf = Classifier(settings())
-    clf._client = object()
+    clf._available = True
     def boom(prompt):
-        raise RuntimeError("API down")
+        raise RuntimeError("Ollama stopped")
     monkeypatch.setattr(clf, "_call_llm", boom)
     d = diff_pages("a", "a\nvisa condition 8501 now applies to subclass 500")
     assert clf.classify_change(d, SRC[0]).classifier == "rules"

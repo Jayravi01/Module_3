@@ -45,8 +45,7 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
     alert_ids: list[int] = []
     failures: list[dict] = []
     ok_keys: list[str] = []
-    log.info("Run %s: %d sources, classifier=%s", day, len(sources),
-             settings.openai_model if classifier.uses_llm else "rules")
+    log.info("Run %s: %d sources, classifier for changes=%s", day, len(sources), classifier.label)
 
     for src in sources:
         sid = ids[src["key"]]
