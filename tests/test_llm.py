@@ -128,3 +128,10 @@ def test_model_name_and_url_come_from_env(monkeypatch):
     monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434/")
     s = Settings()
     assert s.ollama_model == "qwen2.5:7b" and s.ollama_url == "http://127.0.0.1:11434"
+
+
+def test_prompt_defines_every_change_type():
+    """Small models pick vague types ('policy') unless each type is defined in the instructions."""
+    for change_type in C.CHANGE_TYPES:
+        assert f"{change_type} = " in C.SYSTEM_PROMPT
+    assert C.SYSTEM_PROMPT.index("health_insurance = ") < C.SYSTEM_PROMPT.index("policy = ")

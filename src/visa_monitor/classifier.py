@@ -81,6 +81,16 @@ Rules:
 - Use only facts present in the supplied text. Never invent dates, numbers or subclasses.
 - effective_date: ISO date if the text states one, otherwise null.
 - visa_categories: subclass numbers (e.g. "500", "485", "482"); empty list if general.
+- change_type: pick the MOST SPECIFIC one (the first that fits, in this order):
+    health_insurance = OSHC, OVHC, OWHC, health cover, visa condition 8501, Medicare;
+    caps_and_quotas = caps, planning levels, enrolment limits, allocation numbers;
+    eligibility = who can apply or keep a visa (age, English, funds, genuine student);
+    fees = visa application charges or other fees;
+    work_rights = allowed work hours or work conditions;
+    processing_time = how long applications take;
+    compliance = new obligations, checks, penalties, conditions to follow;
+    policy = a general policy announcement that fits none of the above;
+    other = anything else.
 - is_substantive: false if the change is cosmetic (layout, typos, links, dates stamps).
 - confidence: your confidence (0-1) that the classification is correct.
 - Write the summary in plain business English, 1-3 sentences."""
