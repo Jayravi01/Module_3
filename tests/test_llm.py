@@ -34,7 +34,7 @@ class FakeResponse:
         return self.payload
 
 
-def ollama(monkeypatch, models=("qwen2.5:3b",), answer=None, running=True, sent=None):
+def ollama(monkeypatch, models=("qwen2.5:7b",), answer=None, running=True, sent=None):
     """Fake Ollama: GET /api/tags lists ``models``; POST /api/chat returns ``answer`` as JSON text."""
     import json
 
@@ -65,11 +65,11 @@ def test_llm_used_when_ollama_runs_with_the_model(monkeypatch):
     ollama(monkeypatch, sent=sent)
     c = clf()
     rec = c.classify_change(CHANGE, SRC)
-    assert c.label == "qwen2.5:3b" and rec.classifier == "qwen2.5:3b"
+    assert c.label == "qwen2.5:7b" and rec.classifier == "qwen2.5:7b"
     assert rec.change_summary == "Students must hold OSHC from arrival."
     assert rec.effective_date == date(2027, 1, 1) and rec.effective_date_basis == "stated"
     body = sent["body"]
-    assert sent["url"].endswith("/api/chat") and body["model"] == "qwen2.5:3b"
+    assert sent["url"].endswith("/api/chat") and body["model"] == "qwen2.5:7b"
     assert body["options"]["temperature"] == 0 and body["format"]["type"] == "object"
     assert "+From 1 January 2027" in body["messages"][1]["content"]       # the diff is sent
 
@@ -110,7 +110,7 @@ def test_messy_answer_is_cleaned_not_rejected(monkeypatch):
              "effective_date": "next July", "extra": "ignored", "visa_categories": ["subclass 485"]}
     ollama(monkeypatch, answer=messy)
     rec = clf().classify_change(CHANGE, SRC)
-    assert rec.classifier == "qwen2.5:3b" and rec.impact_level == "High"
+    assert rec.classifier == "qwen2.5:7b" and rec.impact_level == "High"
     assert C.clean_llm_answer(messy)["change_type"] == "other"     # unknown type cleaned...
     assert rec.change_type == "health_insurance" and rec.confidence == 1.0   # ...then rules decide
     assert rec.effective_date is None and rec.effective_date_basis == "none"
@@ -124,11 +124,16 @@ def test_invalid_json_falls_back_to_rules(monkeypatch):
     assert clf().classify_change(CHANGE, SRC).classifier == "rules"
 
 
+def test_default_model_is_7b(monkeypatch):
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    assert Settings().ollama_model == "qwen2.5:7b"       # decision 3 Nov: correct summary, ~32 s
+
+
 def test_model_name_and_url_come_from_env(monkeypatch):
-    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:3b")
     monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434/")
     s = Settings()
-    assert s.ollama_model == "qwen2.5:7b" and s.ollama_url == "http://127.0.0.1:11434"
+    assert s.ollama_model == "qwen2.5:3b" and s.ollama_url == "http://127.0.0.1:11434"
 
 
 def test_prompt_defines_every_change_type():
@@ -141,6 +146,6 @@ def test_prompt_defines_every_change_type():
 def test_change_type_comes_from_the_rules_not_the_model(monkeypatch):
     ollama(monkeypatch, answer={**GOOD, "change_type": "fees", "affects_health_cover": False})
     rec = clf().classify_change(CHANGE, SRC)
-    assert rec.classifier == "qwen2.5:3b"                      # summary/impact still from the AI
+    assert rec.classifier == "qwen2.5:7b"                      # summary/impact still from the AI
     assert rec.change_type == "health_insurance"               # 'OSHC' in the changed line
     assert rec.affects_health_cover is True                    # rules found OSHC even if the AI did not

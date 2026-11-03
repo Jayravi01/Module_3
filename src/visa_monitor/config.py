@@ -28,7 +28,7 @@ class Settings:
     # Local LLM (Ollama). Not running / model missing -> keyword rules, the run continues.
     llm_enabled: bool = field(default_factory=lambda: _env_bool("USE_LLM", True))
     ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"))
-    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen2.5:3b"))
+    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
     llm_timeout: int = field(default_factory=lambda: int(os.getenv("OLLAMA_TIMEOUT", "180")))
     llm_max_chars: int = field(default_factory=lambda: int(os.getenv("LLM_MAX_CHARS", "12000")))
 

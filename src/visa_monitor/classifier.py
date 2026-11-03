@@ -1,6 +1,6 @@
 """Turn a page (baseline) or a diff (change) into a structured regulatory record.
 
-Primary path for CHANGES: a local LLM (Ollama, model qwen2.5:3b) asked to answer in a
+Primary path for CHANGES: a local LLM (Ollama, model qwen2.5:7b) asked to answer in a
 fixed JSON schema, so every response has exactly the dashboard fields Medibank asked for.
 Nothing leaves the laptop and there is no API cost. Fallback: deterministic keyword rules,
 used when Ollama is not running, the model is not downloaded, or its answer is invalid,

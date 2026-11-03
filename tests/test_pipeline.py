@@ -165,7 +165,7 @@ def test_llm_path_uses_structured_output(monkeypatch):
     monkeypatch.setattr(clf, "_call_llm", lambda prompt: fake)
     d = diff_pages("a\nb", "a\nb\nOSHC must start on arrival from 1 January 2027")
     rec = clf.classify_change(d, SRC[0])
-    assert rec.classifier == "qwen2.5:3b" and rec.visa_categories == ["500"]
+    assert rec.classifier == "qwen2.5:7b" and rec.visa_categories == ["500"]
     assert rec.effective_date == date(2027, 1, 1)
 
 
