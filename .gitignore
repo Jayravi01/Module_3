@@ -14,3 +14,6 @@ data/*.db
 logs/
 reports/
 debug/
+
+# Tableau autosave / recovery files (created while a workbook is open)
+~*.twbr

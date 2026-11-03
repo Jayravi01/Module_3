@@ -16,7 +16,7 @@ create table if not exists sources (
     url         text not null unique,
     category    text,
     visa_hint   text[] default '{}',
-    render      text default 'static' check (render in ('static', 'js')),
+    render      text default 'static' check (render in ('static', 'js', 'rss')),
     selector    text,
     priority    int  default 1,
     active      boolean default true,
@@ -66,6 +66,14 @@ create table if not exists regulatory_records (
     qa_reviewed_by      text,
     unique (source_id, record_date, record_type)
 );
+
+-- Milestone 3.3: RSS feeds as a source type, and the "basis" of each fact.
+-- (ALTER ... IF NOT EXISTS / DROP IF EXISTS keep this file safe to run on every start.)
+alter table sources drop constraint if exists sources_render_check;
+alter table sources add constraint sources_render_check check (render in ('static', 'js', 'rss'));
+alter table regulatory_records add column if not exists effective_date_basis text;  -- stated / inferred / none
+alter table regulatory_records add column if not exists visa_basis           text;
+alter table regulatory_records add column if not exists impact_basis         text;
 
 create index if not exists idx_records_date   on regulatory_records(record_date);
 create index if not exists idx_records_impact on regulatory_records(impact_level);
@@ -118,7 +126,10 @@ select
     s.name   as source_name,
     s.agency as agency,
     s.category as source_category,
-    r.detected_at
+    r.detected_at,
+    r.effective_date_basis,          -- new columns go LAST: CREATE OR REPLACE VIEW can only append
+    r.visa_basis,
+    r.impact_basis
 from regulatory_records r
 join sources s on s.id = r.source_id;
 

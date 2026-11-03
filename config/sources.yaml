@@ -6,9 +6,10 @@
 #   name           human-readable name shown in Tableau
 #   agency         publishing body
 #   url            page to monitor
-#   category       visa_page | processing_times | news | policy | workplace
+#   category       visa_page | processing_times | news | media_release | policy | workplace
 #   visa_hint      visa subclasses this page usually concerns (helps the LLM)
-#   render         "static" (requests) or "js" (Playwright, for JS-rendered pages)
+#   render         "static" (requests), "js" (Playwright, for JS-rendered pages) or
+#                  "rss" (an RSS feed: one line per item, date | title | description)
 #   selector       optional CSS selector for the main content block
 #   priority       1 = core (counts toward coverage KPI), 2 = secondary
 #
@@ -140,3 +141,56 @@ sources:
     render: static
     selector: main
     priority: 2
+
+  # ---------- Ministerial media releases (added 3 Nov 2026, milestone 3.3) ----------
+  # The Home Affairs minister pages are built by script; their RSS feeds are plain XML.
+  - key: minister_home_affairs
+    name: Minister for Home Affairs and Immigration – media releases
+    agency: Minister for Home Affairs (Tony Burke)
+    url: https://minister.homeaffairs.gov.au/_layouts/15/AppPages/Rss.aspx?type=media&mini=TonyBurke
+    category: media_release
+    visa_hint: []
+    render: rss
+    selector:
+    priority: 1
+
+  - key: minister_immigration_assistant
+    name: Assistant Minister for Immigration – media releases
+    agency: Assistant Minister for Immigration (Matt Thistlethwaite)
+    url: https://minister.homeaffairs.gov.au/_layouts/15/AppPages/Rss.aspx?type=media&mini=MattThistlethwaite
+    category: media_release
+    visa_hint: []
+    render: rss
+    selector:
+    priority: 1
+
+  - key: minister_education
+    name: Minister for Education – media releases
+    agency: Minister for Education (Jason Clare)
+    url: https://ministers.education.gov.au/clare
+    category: media_release
+    visa_hint: []
+    render: static
+    selector: main
+    priority: 1
+
+  - key: minister_international_education
+    name: Assistant Minister for International Education – media releases
+    agency: Assistant Minister for International Education (Julian Hill)
+    url: https://ministers.education.gov.au/hon-julian-hill-mp
+    category: media_release
+    visa_hint: ["500", "485"]
+    render: static
+    selector: main
+    priority: 1
+
+  # ---------- Industry body ----------
+  - key: mia_media_releases
+    name: Migration Institute of Australia – media releases
+    agency: Migration Institute of Australia
+    url: https://www.mia.org.au/Web/Web/Public-Resources/Media-Releases-Index.aspx
+    category: media_release
+    visa_hint: []
+    render: static
+    selector: "#WebPartZone1_Page1"
+    priority: 2         # industry view, not a government decision: not in the coverage KPI

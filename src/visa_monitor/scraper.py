@@ -88,6 +88,31 @@ def normalise_html(html: str, selector: str | None = None) -> str:
     return text
 
 
+def rss_to_text(xml: str) -> str:
+    """An RSS feed as one line per item: 'YYYY-MM-DD | title | short description'.
+
+    Ministerial media releases are published as RSS (their web pages are built by script).
+    Only the items are kept: the feed's own <lastBuildDate> changes on every request and would
+    look like a change every day. Descriptions may contain HTML, which is reduced to text.
+    """
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+
+    root = ET.fromstring(xml.encode("utf-8") if isinstance(xml, str) else xml)
+    lines = []
+    for item in root.iter("item"):
+        title = re.sub(r"\s+", " ", item.findtext("title") or "").strip()
+        raw_date = (item.findtext("pubDate") or "").strip()
+        try:
+            day = parsedate_to_datetime(raw_date).date().isoformat()
+        except (TypeError, ValueError):
+            day = raw_date or "no date"
+        desc = BeautifulSoup(item.findtext("description") or "", "html.parser").get_text(" ")
+        desc = re.sub(r"\s+", " ", desc).strip()[:300]
+        lines.append(" | ".join(part for part in (day, title, desc) if part))
+    return "\n".join(lines)
+
+
 def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -187,14 +212,15 @@ class Scraper:
                 return FetchResult(url, False, None, None, None, "Blocked by robots.txt")
 
             status, text, method = None, "", "static"
+            is_rss = source.get("render") == "rss"
             if source.get("render") != "js":
                 status, html = self._get_static(url)
                 self._debug_save(source, html, "static")
                 if status < 400:
-                    text = self._extract(html, source.get("selector"))
+                    text = rss_to_text(html) if is_rss else self._extract(html, source.get("selector"))
 
-            needs_browser = source.get("render") == "js" or status is None or status >= 400 \
-                or len(text) < MIN_TEXT
+            needs_browser = not is_rss and (source.get("render") == "js" or status is None or status >= 400
+                                            or len(text) < MIN_TEXT)
             if needs_browser and self.settings.enable_js_render:
                 try:
                     status, html = self._get_js(url)

@@ -37,6 +37,7 @@ create table if not exists regulatory_records (
     confidence real, classifier text, source_url text, diff_excerpt text,
     detected_at text default current_timestamp,
     qa_is_real_change int, qa_impact_correct int, qa_categories_correct int, qa_reviewed_by text,
+    effective_date_basis text, visa_basis text, impact_basis text,
     unique (source_id, record_date, record_type));
 create table if not exists run_log (
     run_date text primary key, started_at text, finished_at text, sources_checked int,
@@ -50,7 +51,9 @@ create table if not exists alerts (
 FEED_COLUMNS = ["id", "record_date", "record_type", "title", "change_summary", "effective_date",
                 "visa_categories", "change_type", "impact_level", "impact_reason",
                 "affects_health_cover", "confidence", "classifier", "source_url",
-                "source_name", "agency", "source_category", "detected_at"]
+                "source_name", "agency", "source_category", "detected_at",
+                "effective_date_basis", "visa_basis", "impact_basis"]
+BASIS_COLUMNS = ("effective_date_basis", "visa_basis", "impact_basis")
 
 
 class BaseStore:
@@ -155,13 +158,15 @@ class BaseStore:
             "insert into regulatory_records (source_id, record_date, record_type, title, "
             "change_summary, effective_date, visa_categories, change_type, impact_level, "
             "impact_reason, affects_health_cover, confidence, classifier, source_url, diff_excerpt, "
-            "detected_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)" + self._returning(),
+            "detected_at, effective_date_basis, visa_basis, impact_basis) "
+            "values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)" + self._returning(),
             (source_id, self._d(day), record_type, rec.title, rec.change_summary,
              self._d(rec.effective_date) if rec.effective_date else None,
              self._arr(rec.visa_categories), rec.change_type, rec.impact_level,
              rec.impact_reason, self._true() if rec.affects_health_cover else self._false(),
              rec.confidence, rec.classifier, source_url, (diff_excerpt or "")[:4000],
-             self._ts(detected_at or datetime.now().astimezone())))
+             self._ts(detected_at or datetime.now().astimezone()),
+             rec.effective_date_basis, rec.visa_basis, rec.impact_basis))
         return self._last_id(cur)
 
     def _returning(self) -> str:
@@ -188,7 +193,8 @@ class BaseStore:
         q = ("select r.id, r.record_date, r.record_type, r.title, r.change_summary, r.effective_date, "
              "r.visa_categories, r.change_type, r.impact_level, r.impact_reason, "
              "r.affects_health_cover, r.confidence, r.classifier, r.source_url, s.name, s.agency, "
-             "s.category, r.detected_at from regulatory_records r join sources s on s.id = r.source_id "
+             "s.category, r.detected_at, r.effective_date_basis, r.visa_basis, r.impact_basis "
+             "from regulatory_records r join sources s on s.id = r.source_id "
              "where 1=1")
         params: list = []
         if start:
@@ -235,6 +241,12 @@ class SQLiteStore(BaseStore):
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(path)
         conn.executescript(SQLITE_SCHEMA)
+        # Older local files (before milestone 3.3) lack the basis columns: add them.
+        existing = {row[1] for row in conn.execute("pragma table_info(regulatory_records)")}
+        for column in BASIS_COLUMNS:
+            if column not in existing:
+                conn.execute(f"alter table regulatory_records add column {column} text")
+        conn.commit()
         super().__init__(conn)
 
 

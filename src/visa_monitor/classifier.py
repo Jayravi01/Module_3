@@ -30,14 +30,20 @@ class RegulatoryRecord(BaseModel):
     change_summary: str
     effective_date: date | None = None
     visa_categories: list[str] = []
+    # "baseline" is set by apply_basis for first snapshots (a baseline is not a change)
     change_type: Literal["eligibility", "processing_time", "compliance", "policy", "fees",
-                         "health_insurance", "work_rights", "caps_and_quotas", "other"] = "other"
+                         "health_insurance", "work_rights", "caps_and_quotas", "other",
+                         "baseline"] = "other"
     impact_level: Literal["High", "Medium", "Low"] = "Low"
     impact_reason: str = ""
     affects_health_cover: bool = False
     confidence: float = Field(0.5, ge=0, le=1)
     is_substantive: bool = True     # False => cosmetic edit, not stored as a change
     classifier: str = "rules"
+    # Was each fact STATED in the source text, INFERRED by the monitor, or not present (none)?
+    effective_date_basis: Literal["stated", "inferred", "none"] = "none"
+    visa_basis: Literal["stated", "inferred", "none"] = "none"
+    impact_basis: Literal["stated", "inferred", "none"] = "none"
 
     @field_validator("visa_categories")
     @classmethod
@@ -119,37 +125,80 @@ MONTHS = {m: i for i, m in enumerate(
      "september", "october", "november", "december"], start=1)}
 
 
-def _find_subclasses(text: str, hints: list[str]) -> list[str]:
-    found = [c for c in KNOWN_SUBCLASSES
-             if re.search(rf"(subclass\s*{c}\b|\b{c}\s*visa|\(subclass {c}\))", text, re.I)]
-    return found or list(hints)
+def find_subclasses(text: str) -> list[str]:
+    """Visa subclasses the text EXPLICITLY names ("subclass 500", "500 visa", "(subclass 500)")."""
+    return [c for c in KNOWN_SUBCLASSES
+            if re.search(rf"(subclass\s*{c}\b|\b{c}\s*visa|\(subclass {c}\))", text, re.I)]
+
+
+def has_term(low: str, term: str) -> bool:
+    """Whole-word match: 'cap' matches 'visa cap' but NOT 'capacity' or 'capital'."""
+    return re.search(rf"(?<!\w){re.escape(term.strip())}(?!\w)", low) is not None
+
+
+def all_dates(text: str) -> list[date]:
+    """Every date written like '1 July 2026' in the text, in order."""
+    out = []
+    for m in DATE_RE.finditer(text):
+        try:
+            out.append(date(int(m.group(3)), MONTHS[m.group(2).lower()], int(m.group(1))))
+        except ValueError:
+            continue
+    return out
 
 
 def _first_date(text: str) -> date | None:
-    m = DATE_RE.search(text)
-    if not m:
-        return None
-    try:
-        return date(int(m.group(3)), MONTHS[m.group(2).lower()], int(m.group(1)))
-    except ValueError:
-        return None
+    dates = all_dates(text)
+    return dates[0] if dates else None
+
+
+def apply_basis(rec: "RegulatoryRecord", mode: str, text: str, source: dict) -> "RegulatoryRecord":
+    """Final, shared rules for BOTH classifiers (LLM and keyword rules).
+
+    ``text`` is what changed (added + removed lines) for a change, or the page for a baseline.
+
+    Visa tags (decision 3 Nov: "hints + changed lines"):
+      * baseline -> the page's own visa (visa_hint in sources.yaml), e.g. 500 for the Student
+        page; news pages have no hint -> no tag ("General").
+      * change   -> subclasses named in the changed lines; if none, the page's own visa.
+    Basis (3 columns): 'stated' = written in the source text, 'inferred' = decided by the
+    monitor, 'none' = no value.
+    """
+    hints = [str(h) for h in (source.get("visa_hint") or [])]
+    mentioned = find_subclasses(text)
+    if mode == "baseline":
+        rec.visa_categories = hints
+        rec.visa_basis = "none" if not hints else ("stated" if all(h in mentioned for h in hints) else "inferred")
+        rec.effective_date, rec.effective_date_basis = None, "none"
+        rec.impact_level, rec.impact_basis, rec.change_type = "Low", "none", "baseline"
+        return rec
+    if not rec.visa_categories:
+        rec.visa_categories = mentioned or hints
+    codes = rec.visa_categories
+    rec.visa_basis = "none" if not codes else ("stated" if all(c in mentioned for c in codes) else "inferred")
+    if rec.effective_date is None:
+        rec.effective_date_basis = "none"
+    else:
+        rec.effective_date_basis = "stated" if rec.effective_date in all_dates(text) else "inferred"
+    rec.impact_basis = "inferred"          # impact is always the monitor's judgement (rubric)
+    return rec
 
 
 def rules_classify(text: str, source: dict, mode: str) -> RegulatoryRecord:
     low = text.lower()
     is_proc_page = source.get("category") == "processing_times"
-    if any(t in low for t in HIGH_TERMS):
+    if any(has_term(low, t) for t in HIGH_TERMS):
         level, reason = "High", "Mentions eligibility, caps, pauses or health-cover conditions"
-    elif is_proc_page or any(t in low for t in MEDIUM_TERMS):
+    elif is_proc_page or any(has_term(low, t) for t in MEDIUM_TERMS):
         level, reason = "Medium", "Processing times, fees, work rights or upcoming changes"
     else:
         level, reason = "Low", "No high- or medium-impact terms found"
 
     if is_proc_page or "processing time" in low:
         ctype = "processing_time"
-    elif any(t in low for t in HEALTH_TERMS):
+    elif any(has_term(low, t) for t in HEALTH_TERMS):
         ctype = "health_insurance"
-    elif "fee" in low or "charge" in low:
+    elif has_term(low, "fee") or has_term(low, "fees") or has_term(low, "charge"):
         ctype = "fees"
     elif "work" in low and "hour" in low:
         ctype = "work_rights"
@@ -168,10 +217,10 @@ def rules_classify(text: str, source: dict, mode: str) -> RegulatoryRecord:
     return RegulatoryRecord(
         title=title[:200], change_summary=summary,
         effective_date=_first_date(text) if mode == "change" else None,  # baselines describe current state
-        visa_categories=_find_subclasses(text, source.get("visa_hint", [])),
+        visa_categories=find_subclasses(text),          # final tags: apply_basis
         change_type=ctype, impact_level=level if mode == "change" else "Low",
         impact_reason=reason if mode == "change" else "Baseline record (no change yet)",
-        affects_health_cover=any(t in low for t in HEALTH_TERMS),
+        affects_health_cover=any(has_term(low, t) for t in HEALTH_TERMS),
         confidence=0.4, classifier="rules",
     )
 
@@ -207,13 +256,11 @@ class Classifier:
                     data["effective_date"] = None
                 rec = RegulatoryRecord(**data, classifier=self.settings.openai_model)
                 if mode == "baseline":
-                    rec.impact_level = "Low"
-                    rec.effective_date = None
                     rec.is_substantive = True
-                return rec
+                return apply_basis(rec, mode, fallback_text, source)
             except Exception:
                 log.exception("LLM classification failed; using rule-based fallback")
-        return rules_classify(fallback_text, source, mode)
+        return apply_basis(rules_classify(fallback_text, source, mode), mode, fallback_text, source)
 
     def summarise_baseline(self, text: str, source: dict) -> RegulatoryRecord:
         text = text[: self.settings.llm_max_chars]

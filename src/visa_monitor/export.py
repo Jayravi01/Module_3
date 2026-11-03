@@ -22,6 +22,7 @@ EXPORT_HEADERS = {
     "classifier": "Classifier", "source_name": "Source", "agency": "Agency",
     "source_category": "Source Category", "source_url": "Source Link",
     "detected_at": "Detected At", "id": "Record ID",
+    "effective_date_basis": "Effective Date Basis", "visa_basis": "Visa Basis", "impact_basis": "Impact Basis",
 }
 
 
