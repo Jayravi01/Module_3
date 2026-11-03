@@ -212,6 +212,14 @@ class BaseStore:
             rows.append(d)
         return rows
 
+    def failed_sources_since(self, start: date) -> dict[str, int]:
+        """Source name -> number of days its fetch failed, from ``start`` (weekly email)."""
+        rows = self._exec(
+            "select s.name, count(*) from page_snapshots p join sources s on s.id = p.source_id "
+            "where p.fetch_ok = ? and p.snapshot_date >= ? group by s.name",
+            (self._false(), self._d(start))).fetchall()
+        return {name: int(n) for name, n in rows}
+
     def runs(self) -> list[dict]:
         cur = self._exec("select * from run_log order by run_date")
         cols = [c[0] for c in cur.description]

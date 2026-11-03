@@ -45,7 +45,7 @@ with open_store(settings) as store:
     summary = run_daily(settings=settings, store=store,
                         run_date=date.fromisoformat(args.date) if args.date else None)
     files = export_after_run(store, date.fromisoformat(summary["run_date"]), args.out)
-    print("\nThis run:", summary)
+    print("\nThis run:", {k: v for k, v in summary.items() if k not in ("alert_ids", "failures", "ok_keys")})
     total = store.feed()
     today = [r for r in total if r["record_date"] == summary["run_date"]]
     print(f"Stored so far: {len(total)} records in total, {len(today)} dated {summary['run_date']} "

@@ -2,7 +2,7 @@
 
     Day 1 for a source  : no earlier snapshot  -> 'baseline' record
     Later days, same hash: nothing new          -> history untouched
-    Later days, new hash : diff vs last good day -> 'change' record (+ alert if High)
+    Later days, new hash : diff vs last good day -> 'change' record (+ alert if >= ALERT_MIN_LEVEL)
 
 Re-running on the same day is safe: sources already captured today are skipped.
 """
@@ -12,7 +12,7 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from .alerts import format_alert, send_alert, should_alert
+from .alerts import should_alert
 from .classifier import Classifier
 from .config import Settings, load_sources
 from .diff import diff_pages
@@ -40,6 +40,11 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
     started = datetime.now(settings.tz)
     ids = store.sync_sources(sources)
     stats = dict(checked=0, failed=0, core_total=0, core_ok=0, baselines=0, changes=0, alerts=0)
+    # For the scheduler (daily.py): which records need an alert email, which sources failed,
+    # which worked. The pipeline itself never sends email, so a manual run_daily.py stays quiet.
+    alert_ids: list[int] = []
+    failures: list[dict] = []
+    ok_keys: list[str] = []
     log.info("Run %s: %d sources, classifier=%s", day, len(sources),
              settings.openai_model if classifier.uses_llm else "rules")
 
@@ -51,6 +56,7 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
 
         if store.snapshot_ok_today(sid, day):           # idempotent re-run
             stats["core_ok"] += core
+            ok_keys.append(src["key"])
             continue
 
         fetch = scraper.fetch(src)
@@ -58,9 +64,12 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
         if not fetch.ok:
             stats["failed"] += 1
             log.warning("  ✗ %s — %s", src["key"], fetch.error)
+            failures.append({"key": src["key"], "name": src["name"], "url": src["url"],
+                             "status": fetch.status, "error": fetch.error})
             store.commit()
             continue
         stats["core_ok"] += core
+        ok_keys.append(src["key"])
 
         previous = store.previous_snapshot(sid, day)
         if previous is None:
@@ -86,9 +95,8 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
                         stats["changes"] += 1
                         log.info("  ▲ %s — %s impact change", src["key"], rec.impact_level)
                         if should_alert(rec, settings.alert_min_level):
-                            channel, ok = send_alert(format_alert(rec, src))
-                            store.log_alert(rid, day, rec.impact_level, channel, ok)
-                            stats["alerts"] += ok
+                            alert_ids.append(rid)       # emailed by daily.py after the run
+                            stats["alerts"] += 1
         store.commit()
 
     if hasattr(scraper, "close"):
@@ -105,4 +113,4 @@ def run_daily(settings: Optional[Settings] = None, store: Optional[BaseStore] = 
     store.commit()
     summary = {"run_date": day.isoformat(), "status": status, **stats}
     log.info("Run complete: %s", summary)
-    return summary
+    return {**summary, "alert_ids": alert_ids, "failures": failures, "ok_keys": ok_keys}

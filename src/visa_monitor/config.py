@@ -40,7 +40,7 @@ class Settings:
     enable_js_render: bool = field(default_factory=lambda: _env_bool("ENABLE_JS_RENDER", True))
 
     # Alerts
-    alert_min_level: str = field(default_factory=lambda: os.getenv("ALERT_MIN_LEVEL", "High"))
+    alert_min_level: str = field(default_factory=lambda: os.getenv("ALERT_MIN_LEVEL", "Medium"))
 
     # Time
     timezone: str = field(default_factory=lambda: os.getenv("TIMEZONE", "Australia/Melbourne"))
